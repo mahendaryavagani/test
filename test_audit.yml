@@ -1,0 +1,67 @@
+#BULK AUDIT
+- name: BULK AUDIT
+  hosts: localhost
+  gather_facts: no
+  any_errors_fatal: true
+  tags: always
+  vars:
+    ansible_connection: local
+  tasks:
+    - name: Create Group  'devices'  
+      add_host:
+        name: "{{ item }}"
+        groups: devices
+        ansible_host: "{{ item | ipaddr('address') }}"
+      with_items: "{{ DeviceIPs }}"
+      changed_when: false
+
+- name: AUDIT ON BULK LIST OF DEVICES
+  hosts: devices
+  gather_facts: no
+  tasks:
+    - name: RUN CLI COMMANDS
+      iosxr_command:
+        commands: 
+          - show run hostname 
+          - show version
+          - show ospf nei | inc FULL
+      vars:
+        ansible_connection: network_cli
+        ansible_network_os: iosxr
+        ansible_network_cli_retries: 2
+        ansible_connect_timeout: 60           
+      register: output
+      ignore_errors: yes
+      
+    - name: debug
+      debug:
+        msg: "{{ output.stdout_lines }}"
+
+    - name: FILTER DATA 
+      set_fact:
+        HOSTNAME: "{{ output.stdout[0] | regex_findall(hostname) }}"
+        SW_VERSION: "{{ output.stdout[1] | regex_findall(sw_version) }}"
+        OSPF_NEIGHBORS: "{{ output.stdout[2] | regex_findall(ospf_neib) }}"
+      vars:
+        hostname: 'hostname (\S+)'
+        sw_version: 'Cisco IOS XR Software, Version (\d\.\d\.\d+)'
+        ospf_neib: '([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})\s+1\s+FULL'
+
+    - name: FILTER DATA 
+      set_fact:
+        HOSTNAME: "{{ HOSTNAME[0] }}"
+        SW_VERSION: "{{ SW_VERSION[0] }}"
+        OSPF_NEIGHBORS: "{{ OSPF_NEIGHBORS[0] }}"
+
+    - debug: var=HOSTNAME
+    - debug: var=SW_VERSION
+    - debug: var=OSPF_NEIGHBORS
+    
+    
+#    - name: FILTER DATA 
+#      set_stats:
+#        data:
+#        HOSTNAME: "{{ HOSTNAME[0] }}"
+#        SW_VERSION: "{{ SW_VERSION[0] }}"
+#        OSPF_NEIGHBORS: "{{ OSPF_NEIGHBORS[0] }}"
+        
